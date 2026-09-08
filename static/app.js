@@ -961,19 +961,6 @@ function trapModalFocus(overlay, focusableElements, initialElement) {
     initialElement.focus();
 }
 
-function removeModalFocusTrap(id) {
-    const overlay = document.getElementById(id);
-
-    if (!overlay?._focusTrapHandler) {
-        return;
-    }
-
-    document.removeEventListener(
-        "keydown",
-        overlay._focusTrapHandler
-    );
-}
-
 function closeContactModal() {
     const overlay = document.getElementById("contactModalOverlay");
 
