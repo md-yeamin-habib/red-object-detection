@@ -196,10 +196,13 @@ function updateCameraDisplay(forceStreamUpdate = false) {
 
 function showCameraConnected(camera, forceStreamUpdate = false) {
     let stream = document.getElementById("cameraStream");
-
     const streamCameraId = stream?.dataset.cameraId;
 
-    if (!stream || forceStreamUpdate || String(streamCameraId) !== String(camera.id)) {
+    if (
+        !stream ||
+        forceStreamUpdate ||
+        String(streamCameraId) !== String(camera.id)
+    ) {
         removeCameraStream();
 
         stream = document.createElement("img");
@@ -313,8 +316,6 @@ function removeCameraStream() {
     }
 }
 
-// Detection alerts
-
 function checkDetectionAlerts() {
     state.cameras.forEach(camera => {
         const cameraId = String(camera.id);
@@ -354,7 +355,8 @@ function showDetectionAlert(camera) {
     title.textContent = "Red Object Detected";
 
     const message = document.createElement("p");
-    message.textContent = `A red object has been detected on ${cameraName}.`;
+    message.textContent =
+        `A red object has been detected on ${cameraName}.`;
 
     const actions = document.createElement("div");
     actions.className = "detection-alert-actions";
@@ -372,6 +374,7 @@ function showDetectionAlert(camera) {
 
     switchButton.addEventListener("click", () => {
         state.selectedCameraId = camera.id;
+
         renderCameras();
         updateCameraDisplay(true);
 
@@ -387,14 +390,20 @@ function showDetectionAlert(camera) {
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
-    ignoreButton.focus();
+    trapModalFocus(
+        overlay,
+        [ignoreButton, switchButton],
+        ignoreButton
+    );
 }
 
 function closeDetectionAlert() {
-    document.getElementById("detectionAlertOverlay")?.remove();
-}
+    const overlay = document.getElementById("detectionAlertOverlay");
 
-// Camera view
+    if (overlay) {
+        overlay.remove();
+    }
+}
 
 function showCameraView() {
     state.currentView = "cameras";
@@ -429,8 +438,6 @@ async function showContactsView() {
 function handleContactsTabClick() {
     showContactsView();
 }
-
-// Contacts
 
 async function loadContacts() {
     try {
@@ -666,13 +673,19 @@ async function handleContactSubmit(event) {
     const phoneNumber = phoneInput.value.trim();
 
     if (!name) {
-        alert("Please enter a contact name.");
+        showMessageAlert(
+            "Invalid Contact",
+            "Please enter a contact name."
+        );
         nameInput.focus();
         return;
     }
 
     if (!phoneNumber) {
-        alert("Please enter a phone number.");
+        showMessageAlert(
+            "Invalid Contact",
+            "Please enter a phone number."
+        );
         phoneInput.focus();
         return;
     }
@@ -718,6 +731,7 @@ async function handleContactSubmit(event) {
 
             try {
                 const data = await response.json();
+
                 if (data.error) {
                     message = data.error;
                 }
@@ -730,7 +744,11 @@ async function handleContactSubmit(event) {
         await loadContacts();
     } catch (error) {
         console.error("Failed to save contact:", error);
-        alert(error.message || "Failed to save contact.");
+
+        showMessageAlert(
+            "Save Failed",
+            error.message || "Failed to save contact."
+        );
 
         if (submitButton) {
             submitButton.disabled = false;
@@ -747,9 +765,15 @@ async function deleteContact(contactId) {
         item => String(item.id) === String(contactId)
     );
 
-    const contactName = contact?.name || "this contact";
+    if (!contact) {
+        return;
+    }
 
-    if (!window.confirm(`Are you sure you want to delete ${contactName}?`)) {
+    const confirmed = await showDeleteConfirmation(
+        contact.name || "this contact"
+    );
+
+    if (!confirmed) {
         return;
     }
 
@@ -767,6 +791,7 @@ async function deleteContact(contactId) {
 
             try {
                 const data = await response.json();
+
                 if (data.error) {
                     message = data.error;
                 }
@@ -778,12 +803,184 @@ async function deleteContact(contactId) {
         await loadContacts();
     } catch (error) {
         console.error("Failed to delete contact:", error);
-        alert(error.message || "Failed to delete contact.");
+
+        showMessageAlert(
+            "Delete Failed",
+            error.message || "Failed to delete contact."
+        );
     }
 }
 
+function showDeleteConfirmation(contactName) {
+    return new Promise(resolve => {
+        closeContactModal();
+        closeMessageAlert();
+        closeDeleteConfirmation();
+
+        const overlay = document.createElement("div");
+        overlay.className = "delete-confirmation-overlay";
+        overlay.id = "deleteConfirmationOverlay";
+
+        const modal = document.createElement("div");
+        modal.className = "delete-confirmation-modal";
+        modal.setAttribute("role", "alertdialog");
+        modal.setAttribute("aria-modal", "true");
+        modal.setAttribute(
+            "aria-labelledby",
+            "deleteConfirmationTitle"
+        );
+
+        const icon = document.createElement("div");
+        icon.className = "delete-confirmation-icon";
+        icon.textContent = "×";
+
+        const title = document.createElement("h3");
+        title.id = "deleteConfirmationTitle";
+        title.textContent = "Delete Contact";
+
+        const message = document.createElement("p");
+        message.textContent =
+            `Are you sure you want to delete ${contactName}?`;
+
+        const actions = document.createElement("div");
+        actions.className = "delete-confirmation-actions";
+
+        const cancelButton = document.createElement("button");
+        cancelButton.type = "button";
+        cancelButton.className = "confirmation-button cancel";
+        cancelButton.textContent = "Cancel";
+
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "confirmation-button delete";
+        deleteButton.textContent = "Delete";
+
+        const finish = result => {
+            closeDeleteConfirmation();
+            resolve(result);
+        };
+
+        cancelButton.addEventListener(
+            "click",
+            () => finish(false)
+        );
+
+        deleteButton.addEventListener(
+            "click",
+            () => finish(true)
+        );
+
+        actions.append(cancelButton, deleteButton);
+        modal.append(icon, title, message, actions);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        trapModalFocus(
+            overlay,
+            [cancelButton, deleteButton],
+            cancelButton
+        );
+    });
+}
+
+function closeDeleteConfirmation() {
+    document
+        .getElementById("deleteConfirmationOverlay")
+        ?.remove();
+}
+
+function showMessageAlert(titleText, messageText) {
+    closeMessageAlert();
+
+    const overlay = document.createElement("div");
+    overlay.className = "message-alert-overlay";
+    overlay.id = "messageAlertOverlay";
+
+    const modal = document.createElement("div");
+    modal.className = "message-alert-modal";
+    modal.setAttribute("role", "alertdialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-labelledby", "messageAlertTitle");
+
+    const title = document.createElement("h3");
+    title.id = "messageAlertTitle";
+    title.textContent = titleText;
+
+    const message = document.createElement("p");
+    message.textContent = messageText;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "message-alert-button";
+    button.textContent = "OK";
+    button.addEventListener("click", closeMessageAlert);
+
+    modal.append(title, message, button);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    trapModalFocus(
+        overlay,
+        [button],
+        button
+    );
+}
+
+function closeMessageAlert() {
+    document.getElementById("messageAlertOverlay")?.remove();
+}
+
+function trapModalFocus(overlay, focusableElements, initialElement) {
+    const handleKeydown = event => {
+        if (!document.body.contains(overlay)) {
+            document.removeEventListener("keydown", handleKeydown);
+            return;
+        }
+
+        if (event.key !== "Tab") {
+            return;
+        }
+
+        const first = focusableElements[0];
+        const last = focusableElements[focusableElements.length - 1];
+
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+            return;
+        }
+
+        if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    };
+
+    overlay._focusTrapHandler = handleKeydown;
+    document.addEventListener("keydown", handleKeydown);
+    initialElement.focus();
+}
+
+function removeModalFocusTrap(id) {
+    const overlay = document.getElementById(id);
+
+    if (!overlay?._focusTrapHandler) {
+        return;
+    }
+
+    document.removeEventListener(
+        "keydown",
+        overlay._focusTrapHandler
+    );
+}
+
 function closeContactModal() {
-    document.getElementById("contactModalOverlay")?.remove();
+    const overlay = document.getElementById("contactModalOverlay");
+
+    if (overlay) {
+        overlay.remove();
+    }
+
     state.editingContactId = null;
     document.removeEventListener("keydown", handleModalEscape);
 }
@@ -793,8 +990,6 @@ function handleModalEscape(event) {
         closeContactModal();
     }
 }
-
-// Server status
 
 async function checkServerStatus() {
     try {
@@ -816,7 +1011,10 @@ async function checkServerStatus() {
             data.status === "running" ||
             data.status === "online";
 
-        setSystemStatus(true, operational ? "Operational" : "Connected");
+        setSystemStatus(
+            true,
+            operational ? "Operational" : "Connected"
+        );
     } catch (error) {
         console.error("Backend status check failed:", error);
         setConnectionStatus(false);
