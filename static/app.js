@@ -8,7 +8,8 @@ const state = {
     editingContactId: null,
     camerasRefreshTimer: null,
     serverStatusTimer: null,
-    clockTimer: null
+    clockTimer: null,
+    alertedCameras: new Set()
 };
 
 const camerasTab = document.getElementById("camerasTab");
@@ -91,6 +92,8 @@ async function loadCameras() {
         }
 
         state.cameras = cameras;
+
+        checkDetectionAlerts();
 
         if (
             state.selectedCameraId === null ||
@@ -204,8 +207,7 @@ function showCameraConnected(camera, forceStreamUpdate = false) {
         stream.id = "cameraStream";
         stream.dataset.cameraId = String(camera.id);
         stream.alt = `${camera.name || `Camera ${camera.id}`} live feed`;
-        stream.src =
-            `${API_BASE}/cameras/${encodeURIComponent(camera.id)}/stream`;
+        stream.src = `${API_BASE}/cameras/${encodeURIComponent(camera.id)}/stream`;
 
         stream.addEventListener("error", () => {
             if (String(state.selectedCameraId) !== String(camera.id)) {
@@ -217,15 +219,12 @@ function showCameraConnected(camera, forceStreamUpdate = false) {
             cameraLiveOverlay.classList.add("hidden");
             cameraPlaceholder.classList.remove("hidden");
 
-            cameraPlaceholderTitle.textContent =
-                "Camera stream unavailable";
-
+            cameraPlaceholderTitle.textContent = "Camera stream unavailable";
             cameraPlaceholderMessage.textContent =
                 "The camera is connected, but no video signal is currently available.";
 
             cameraInfoStatus.textContent = "Stream unavailable";
-            cameraInfoStatus.className =
-                "info-value status-offline";
+            cameraInfoStatus.className = "info-value status-offline";
         });
 
         cameraFrame.appendChild(stream);
@@ -256,8 +255,7 @@ function showCameraDisconnected(camera) {
     cameraPlaceholderMessage.textContent =
         "No video signal is currently available from this camera.";
 
-    cameraInfoName.textContent =
-        camera.name || `Camera ${camera.id}`;
+    cameraInfoName.textContent = camera.name || `Camera ${camera.id}`;
 
     cameraInfoStatus.textContent = "Not connected";
     cameraInfoStatus.className = "info-value status-offline";
@@ -315,6 +313,89 @@ function removeCameraStream() {
     }
 }
 
+// Detection alerts
+
+function checkDetectionAlerts() {
+    state.cameras.forEach(camera => {
+        const cameraId = String(camera.id);
+
+        if (camera.detected) {
+            if (!state.alertedCameras.has(cameraId)) {
+                state.alertedCameras.add(cameraId);
+                showDetectionAlert(camera);
+            }
+        } else {
+            state.alertedCameras.delete(cameraId);
+        }
+    });
+}
+
+function showDetectionAlert(camera) {
+    closeDetectionAlert();
+
+    const cameraName = camera.name || `Camera ${camera.id}`;
+
+    const overlay = document.createElement("div");
+    overlay.className = "detection-alert-overlay";
+    overlay.id = "detectionAlertOverlay";
+
+    const modal = document.createElement("div");
+    modal.className = "detection-alert-modal";
+    modal.setAttribute("role", "alertdialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-labelledby", "detectionAlertTitle");
+
+    const icon = document.createElement("div");
+    icon.className = "detection-alert-icon";
+    icon.textContent = "⚠";
+
+    const title = document.createElement("h3");
+    title.id = "detectionAlertTitle";
+    title.textContent = "Red Object Detected";
+
+    const message = document.createElement("p");
+    message.textContent = `A red object has been detected on ${cameraName}.`;
+
+    const actions = document.createElement("div");
+    actions.className = "detection-alert-actions";
+
+    const ignoreButton = document.createElement("button");
+    ignoreButton.type = "button";
+    ignoreButton.className = "detection-alert-button ignore";
+    ignoreButton.textContent = "Ignore";
+    ignoreButton.addEventListener("click", closeDetectionAlert);
+
+    const switchButton = document.createElement("button");
+    switchButton.type = "button";
+    switchButton.className = "detection-alert-button switch";
+    switchButton.textContent = `Switch to ${cameraName}`;
+
+    switchButton.addEventListener("click", () => {
+        state.selectedCameraId = camera.id;
+        renderCameras();
+        updateCameraDisplay(true);
+
+        if (state.currentView !== "cameras") {
+            showCameraView();
+        }
+
+        closeDetectionAlert();
+    });
+
+    actions.append(ignoreButton, switchButton);
+    modal.append(icon, title, message, actions);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    ignoreButton.focus();
+}
+
+function closeDetectionAlert() {
+    document.getElementById("detectionAlertOverlay")?.remove();
+}
+
+// Camera view
+
 function showCameraView() {
     state.currentView = "cameras";
 
@@ -348,6 +429,8 @@ async function showContactsView() {
 function handleContactsTabClick() {
     showContactsView();
 }
+
+// Contacts
 
 async function loadContacts() {
     try {
@@ -710,6 +793,8 @@ function handleModalEscape(event) {
         closeContactModal();
     }
 }
+
+// Server status
 
 async function checkServerStatus() {
     try {
