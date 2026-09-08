@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Security System</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="app">
+
+    <aside class="sidebar">
+
+        <div class="sidebar-header">
+            <div class="logo-mark">
+                <span>AI</span>
+            </div>
+
+            <div class="brand">
+                <h1>Security System</h1>
+                <span>Monitoring Dashboard</span>
+            </div>
+        </div>
+
+        <div class="sidebar-menu">
+
+            <button
+                class="menu-item active"
+                id="camerasTab"
+                type="button"
+                aria-expanded="true">
+
+                <span class="menu-icon">▣</span>
+                <span class="menu-label">Cameras</span>
+                <span
+                    class="expand-icon"
+                    id="cameraExpandIcon"
+                    aria-hidden="true"></span>
+
+            </button>
+
+            <div
+                class="camera-list"
+                id="cameraList">
+            </div>
+
+            <button
+                class="menu-item"
+                id="contactsTab"
+                type="button">
+
+                <span class="menu-icon">♙</span>
+                <span class="menu-label">Contacts</span>
+
+            </button>
+
+        </div>
+
+        <div class="sidebar-footer">
+
+            <div class="system-status">
+
+                <span
+                    class="system-status-dot"
+                    id="systemStatusDot">
+                </span>
+
+                <div>
+                    <span class="system-status-label">
+                        System
+                    </span>
+
+                    <span
+                        class="system-status-value"
+                        id="systemStatusValue">
+                    </span>
+                </div>
+
+            </div>
+
+        </div>
+
+    </aside>
+
+    <main class="main">
+
+        <header class="topbar">
+
+            <div>
+                <span
+                    class="page-eyebrow"
+                    id="pageEyebrow">
+                </span>
+
+                <h2 id="pageTitle"></h2>
+            </div>
+
+            <div class="topbar-right">
+
+                <div class="connection-status">
+
+                    <span
+                        class="connection-dot"
+                        id="connectionDot">
+                    </span>
+
+                    <span id="connectionStatusText"></span>
+
+                </div>
+
+                <div
+                    class="current-time"
+                    id="currentTime">
+                </div>
+
+            </div>
+
+        </header>
+
+        <section
+            class="content"
+            id="content">
+
+            <div
+                class="camera-view"
+                id="cameraView">
+
+                <div class="camera-frame">
+
+                    <div
+                        class="camera-overlay top-left"
+                        id="cameraLiveOverlay">
+
+                        <span class="live-indicator"></span>
+                        LIVE
+
+                    </div>
+
+                    <div
+                        class="camera-overlay top-right"
+                        id="cameraOverlayName">
+                    </div>
+
+                    <div
+                        class="camera-placeholder"
+                        id="cameraPlaceholder">
+
+                        <div class="camera-placeholder-icon">
+                            ◉
+                        </div>
+
+                        <h3 id="cameraPlaceholderTitle">
+                            Camera not connected
+                        </h3>
+
+                        <p id="cameraPlaceholderMessage">
+                            No video signal is currently available
+                            from this camera.
+                        </p>
+
+                    </div>
+
+                </div>
+
+                <div class="camera-info">
+
+                    <div class="info-item">
+                        <span class="info-label">Camera</span>
+                        <span
+                            class="info-value"
+                            id="cameraInfoName">
+                        </span>
+                    </div>
+
+                    <div class="info-item">
+                        <span class="info-label">Status</span>
+                        <span
+                            class="info-value"
+                            id="cameraInfoStatus">
+                        </span>
+                    </div>
+
+                    <div class="info-item">
+                        <span class="info-label">Detection</span>
+                        <span
+                            class="info-value"
+                            id="cameraInfoDetection">
+                        </span>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div
+                class="contacts-view hidden"
+                id="contactsView">
+
+                <div class="section-header">
+
+                    <div>
+                        <span class="page-eyebrow">
+                            SECURITY CONTACTS
+                        </span>
+
+                        <h3>Registered Contacts</h3>
+
+                        <p>
+                            People who can receive security alerts.
+                        </p>
+                    </div>
+
+                    <button
+                        class="add-contact-button"
+                        id="addContactButton"
+                        type="button">
+
+                        <span>+</span>
+                        Add Contact
+
+                    </button>
+
+                </div>
+
+                <div class="contacts-table-container">
+
+                    <table class="contacts-table">
+
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Phone Number</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="contactsTableBody"></tbody>
+
+                    </table>
+
+                    <div
+                        class="contacts-empty hidden"
+                        id="contactsEmpty">
+
+                        <div class="empty-icon">
+                            ♙
+                        </div>
+
+                        <h3>
+                            No registered contacts
+                        </h3>
+
+                        <p>
+                            Add a contact to receive security alerts.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+</div>
+
+<script src="/static/app.js"></script>
+
+</body>
+</html>
