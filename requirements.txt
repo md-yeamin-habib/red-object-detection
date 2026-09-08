@@ -1,0 +1,5 @@
+Flask
+flask-sock
+numpy
+opencv-python-headless
+gunicorn
