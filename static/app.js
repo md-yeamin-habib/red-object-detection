@@ -156,9 +156,13 @@ function renderCameras() {
 }
 
 function selectCamera(cameraId) {
+    if (String(state.selectedCameraId) === String(cameraId)) {
+        return;
+    }
+
     state.selectedCameraId = cameraId;
     renderCameras();
-    updateCameraDisplay();
+    updateCameraDisplay(true);
 }
 
 function getSelectedCamera() {
@@ -167,7 +171,7 @@ function getSelectedCamera() {
     ) || null;
 }
 
-function updateCameraDisplay() {
+function updateCameraDisplay(forceStreamUpdate = false) {
     const camera = getSelectedCamera();
 
     if (!camera) {
@@ -181,37 +185,52 @@ function updateCameraDisplay() {
     cameraInfoName.textContent = name;
 
     if (camera.connected) {
-        showCameraConnected(camera);
+        showCameraConnected(camera, forceStreamUpdate);
     } else {
         showCameraDisconnected(camera);
     }
 }
 
-function showCameraConnected(camera) {
-    removeCameraStream();
+function showCameraConnected(camera, forceStreamUpdate = false) {
+    let stream = document.getElementById("cameraStream");
 
-    const stream = document.createElement("img");
-    stream.className = "camera-stream";
-    stream.id = "cameraStream";
-    stream.alt = `${camera.name || `Camera ${camera.id}`} live feed`;
-    stream.src = `${API_BASE}/cameras/${encodeURIComponent(camera.id)}/stream?t=${Date.now()}`;
+    const streamCameraId = stream?.dataset.cameraId;
 
-    stream.addEventListener("error", () => {
-        if (String(state.selectedCameraId) !== String(camera.id)) {
-            return;
-        }
+    if (!stream || forceStreamUpdate || String(streamCameraId) !== String(camera.id)) {
+        removeCameraStream();
 
-        stream.remove();
-        cameraLiveOverlay.classList.add("hidden");
-        cameraPlaceholder.classList.remove("hidden");
-        cameraPlaceholderTitle.textContent = "Camera stream unavailable";
-        cameraPlaceholderMessage.textContent =
-            "The camera is connected, but no video signal is currently available.";
-        cameraInfoStatus.textContent = "Stream unavailable";
-        cameraInfoStatus.className = "info-value status-offline";
-    });
+        stream = document.createElement("img");
+        stream.className = "camera-stream";
+        stream.id = "cameraStream";
+        stream.dataset.cameraId = String(camera.id);
+        stream.alt = `${camera.name || `Camera ${camera.id}`} live feed`;
+        stream.src =
+            `${API_BASE}/cameras/${encodeURIComponent(camera.id)}/stream`;
 
-    cameraFrame.appendChild(stream);
+        stream.addEventListener("error", () => {
+            if (String(state.selectedCameraId) !== String(camera.id)) {
+                return;
+            }
+
+            stream.remove();
+
+            cameraLiveOverlay.classList.add("hidden");
+            cameraPlaceholder.classList.remove("hidden");
+
+            cameraPlaceholderTitle.textContent =
+                "Camera stream unavailable";
+
+            cameraPlaceholderMessage.textContent =
+                "The camera is connected, but no video signal is currently available.";
+
+            cameraInfoStatus.textContent = "Stream unavailable";
+            cameraInfoStatus.className =
+                "info-value status-offline";
+        });
+
+        cameraFrame.appendChild(stream);
+    }
+
     cameraPlaceholder.classList.add("hidden");
     cameraLiveOverlay.classList.remove("hidden");
 
@@ -237,9 +256,12 @@ function showCameraDisconnected(camera) {
     cameraPlaceholderMessage.textContent =
         "No video signal is currently available from this camera.";
 
-    cameraInfoName.textContent = camera.name || `Camera ${camera.id}`;
+    cameraInfoName.textContent =
+        camera.name || `Camera ${camera.id}`;
+
     cameraInfoStatus.textContent = "Not connected";
     cameraInfoStatus.className = "info-value status-offline";
+
     cameraInfoDetection.textContent = "Unavailable";
     cameraInfoDetection.className = "info-value status-offline";
 }
@@ -249,6 +271,7 @@ function showNoCameraSelected() {
 
     cameraLiveOverlay.classList.add("hidden");
     cameraOverlayName.textContent = "";
+
     cameraPlaceholder.classList.remove("hidden");
 
     cameraPlaceholderTitle.textContent = "No camera selected";
@@ -258,6 +281,7 @@ function showNoCameraSelected() {
     cameraInfoName.textContent = "—";
     cameraInfoStatus.textContent = "Unavailable";
     cameraInfoStatus.className = "info-value status-offline";
+
     cameraInfoDetection.textContent = "Unavailable";
     cameraInfoDetection.className = "info-value status-offline";
 }
@@ -267,6 +291,7 @@ function showNoCameraData() {
 
     cameraLiveOverlay.classList.add("hidden");
     cameraOverlayName.textContent = "";
+
     cameraPlaceholder.classList.remove("hidden");
 
     cameraPlaceholderTitle.textContent = "No cameras available";
@@ -276,12 +301,18 @@ function showNoCameraData() {
     cameraInfoName.textContent = "—";
     cameraInfoStatus.textContent = "Unavailable";
     cameraInfoStatus.className = "info-value status-offline";
+
     cameraInfoDetection.textContent = "Unavailable";
     cameraInfoDetection.className = "info-value status-offline";
 }
 
 function removeCameraStream() {
-    document.getElementById("cameraStream")?.remove();
+    const stream = document.getElementById("cameraStream");
+
+    if (stream) {
+        stream.src = "";
+        stream.remove();
+    }
 }
 
 function showCameraView() {
@@ -296,7 +327,7 @@ function showCameraView() {
     pageEyebrow.textContent = "LIVE MONITORING";
     pageTitle.textContent = "Camera Monitoring";
 
-    updateCameraDisplay();
+    updateCameraDisplay(true);
 }
 
 async function showContactsView() {
