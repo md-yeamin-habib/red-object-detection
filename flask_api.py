@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import traceback
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_sock import Sock
@@ -92,6 +93,7 @@ def send_security_alert(camera_id, red_area, red_percentage):
 
     except Exception as error:
         print(f"[ALERT] Firebase notification failed: {error}")
+        traceback.print_exc()
 
 
 def camera_mjpeg_stream(camera_id):
