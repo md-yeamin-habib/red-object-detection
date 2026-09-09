@@ -6,7 +6,6 @@ from flask_sock import Sock
 
 import backend
 
-
 app = Flask(__name__, static_folder="static")
 sock = Sock(app)
 
@@ -251,36 +250,99 @@ def api_camera_stream(camera_id):
 
 @app.get("/api/contacts")
 def api_get_contacts():
-    return jsonify(
-        backend.get_all_contacts()
-    )
+    contacts = backend.get_all_contacts()
+
+    dashboard_contacts = [
+        {
+            "id": contact["id"],
+            "name": contact["name"],
+            "phone_number": contact["phone_number"],
+            "created_at": contact["created_at"],
+            "updated_at": contact["updated_at"]
+        }
+        for contact in contacts
+    ]
+
+    return jsonify(dashboard_contacts)
+
+@app.post("/api/contacts/check")
+def api_check_contact():
+    data = request.get_json(silent=True) or {}
+
+    notification_token = str(
+        data.get("notification_token", "")
+    ).strip()
+
+    if not notification_token:
+        return jsonify({
+            "success": False,
+            "error": "Firebase notification token is required."
+        }), 400
+
+    contacts = backend.get_all_contacts()
+
+    for contact in contacts:
+        if contact.get("notification_token") == notification_token:
+            return jsonify({
+                "success": True,
+                "registered": True,
+                "contact": contact
+            }), 200
+
+    return jsonify({
+        "success": True,
+        "registered": False
+    }), 200
 
 
-@app.post("/api/contacts")
-def api_create_contact():
+@app.post("/api/contacts/register")
+def api_register_contact():
     data = request.get_json(silent=True) or {}
 
     name = str(data.get("name", "")).strip()
     phone_number = str(data.get("phone_number", "")).strip()
-    notification_token = data.get("notification_token")
+    notification_token = str(
+        data.get("notification_token", "")
+    ).strip()
 
-    if not name or not phone_number:
+    if not name:
         return jsonify({
-            "error": "Name and phone number are required."
+            "success": False,
+            "error": "Name is required."
         }), 400
 
-    if notification_token is not None:
-        notification_token = str(
+    if not phone_number:
+        return jsonify({
+            "success": False,
+            "error": "Phone number is required."
+        }), 400
+
+    if not notification_token:
+        return jsonify({
+            "success": False,
+            "error": "Firebase notification token is required."
+        }), 400
+
+    try:
+        contact = backend.register_contact(
+            name,
+            phone_number,
             notification_token
-        ).strip() or None
+        )
 
-    contact = backend.create_contact(
-        name,
-        phone_number,
-        notification_token
-    )
+        return jsonify({
+            "success": True,
+            "message": "Alert device registered successfully.",
+            "contact": contact
+        }), 200
 
-    return jsonify(contact), 201
+    except Exception as error:
+        print(f"[CONTACT] Registration error: {error}")
+
+        return jsonify({
+            "success": False,
+            "error": "Failed to register alert device."
+        }), 500
 
 
 @app.put("/api/contacts/<int:contact_id>")
@@ -289,23 +351,16 @@ def api_update_contact(contact_id):
 
     name = str(data.get("name", "")).strip()
     phone_number = str(data.get("phone_number", "")).strip()
-    notification_token = data.get("notification_token")
 
     if not name or not phone_number:
         return jsonify({
             "error": "Name and phone number are required."
         }), 400
 
-    if notification_token is not None:
-        notification_token = str(
-            notification_token
-        ).strip() or None
-
     contact = backend.update_contact(
         contact_id,
         name,
-        phone_number,
-        notification_token
+        phone_number
     )
 
     if contact is None:
@@ -313,8 +368,12 @@ def api_update_contact(contact_id):
             "error": "Contact not found."
         }), 404
 
-    return jsonify(contact)
-
+    return jsonify({
+        "id": contact["id"], 
+        "name": contact["name"], 
+        "phone_number": contact["phone_number"], 
+        "created_at": contact["created_at"], 
+        "updated_at": contact["updated_at"] })
 
 @app.delete("/api/contacts/<int:contact_id>")
 def api_delete_contact(contact_id):
@@ -330,28 +389,6 @@ def api_delete_contact(contact_id):
     return jsonify({
         "success": True
     })
-
-
-@app.put("/api/contacts/<int:contact_id>/token")
-def api_update_contact_token(contact_id):
-    data = request.get_json(silent=True) or {}
-
-    token = data.get("notification_token")
-
-    if token is not None:
-        token = str(token).strip() or None
-
-    contact = backend.update_contact_token(
-        contact_id,
-        token
-    )
-
-    if contact is None:
-        return jsonify({
-            "error": "Contact not found."
-        }), 404
-
-    return jsonify(contact)
 
 
 @app.errorhandler(404)
