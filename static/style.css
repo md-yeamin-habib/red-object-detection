@@ -618,42 +618,6 @@ body {
 
 
 /* =========================================================
-   ADD CONTACT BUTTON
-   ========================================================= */
-
-.add-contact-button {
-    height: 38px;
-    padding: 0 15px;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    border: 1px solid #344255;
-    border-radius: 7px;
-    background: var(--panel);
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 11px;
-    white-space: nowrap;
-    transition:
-        background 0.15s ease,
-        color 0.15s ease,
-        border-color 0.15s ease;
-}
-
-.add-contact-button span {
-    font-size: 17px;
-    line-height: 1;
-}
-
-.add-contact-button:hover {
-    background: var(--panel-light);
-    color: var(--text);
-    border-color: #475569;
-}
-
-
-/* =========================================================
    CONTACTS TABLE
    ========================================================= */
 
@@ -1165,10 +1129,6 @@ body {
     .section-header {
         align-items: flex-start;
         flex-direction: column;
-    }
-
-    .add-contact-button {
-        align-self: flex-start;
     }
 }
 
