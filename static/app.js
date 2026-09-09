@@ -35,7 +35,6 @@ const connectionStatusText = document.getElementById("connectionStatusText");
 const currentTime = document.getElementById("currentTime");
 const contactsTableBody = document.getElementById("contactsTableBody");
 const contactsEmpty = document.getElementById("contactsEmpty");
-const addContactButton = document.getElementById("addContactButton");
 
 document.addEventListener("DOMContentLoaded", initialize);
 
@@ -55,7 +54,6 @@ async function initialize() {
 function setupEventListeners() {
     camerasTab.addEventListener("click", handleCamerasTabClick);
     contactsTab.addEventListener("click", handleContactsTabClick);
-    addContactButton.addEventListener("click", () => openContactModal());
 }
 
 function handleCamerasTabClick() {
@@ -296,8 +294,7 @@ function showNoCameraData() {
     cameraPlaceholder.classList.remove("hidden");
 
     cameraPlaceholderTitle.textContent = "No cameras available";
-    cameraPlaceholderMessage.textContent =
-        "The backend has not reported any cameras.";
+    cameraPlaceholderMessage.textContent = "The backend has not reported any cameras.";
 
     cameraInfoName.textContent = "—";
     cameraInfoStatus.textContent = "Unavailable";
@@ -551,9 +548,14 @@ function getContactInitials(name) {
     ).toUpperCase();
 }
 
-function openContactModal(contact = null) {
+function openContactModal(contact) {
     closeContactModal();
-    state.editingContactId = contact?.id ?? null;
+
+    if (!contact) {
+        return;
+    }
+
+    state.editingContactId = contact.id;
 
     const overlay = document.createElement("div");
     overlay.className = "contact-modal-overlay";
@@ -568,7 +570,7 @@ function openContactModal(contact = null) {
     header.className = "contact-modal-header";
 
     const title = document.createElement("h3");
-    title.textContent = contact ? "Edit Contact" : "Add Contact";
+    title.textContent = "Edit Contact";
 
     const closeButton = document.createElement("button");
     closeButton.type = "button";
@@ -590,14 +592,14 @@ function openContactModal(contact = null) {
             "Name",
             "contactName",
             "text",
-            contact?.name || "",
+            contact.name || "",
             "Enter contact name"
         ),
         createFormGroup(
             "Phone Number",
             "contactPhone",
             "tel",
-            contact?.phone_number || "",
+            contact.phone_number || "",
             "Enter phone number"
         )
     );
@@ -617,9 +619,10 @@ function openContactModal(contact = null) {
     submitButton.type = "submit";
     submitButton.setAttribute("form", "contactForm");
     submitButton.className = "modal-button submit";
-    submitButton.textContent = contact ? "Save Changes" : "Add Contact";
+    submitButton.textContent = "Save Changes";
 
     footer.append(cancelButton, submitButton);
+
     form.addEventListener("submit", handleContactSubmit);
 
     modal.append(header, body, footer);
@@ -665,28 +668,24 @@ async function handleContactSubmit(event) {
     const nameInput = document.getElementById("contactName");
     const phoneInput = document.getElementById("contactPhone");
 
-    if (!nameInput || !phoneInput) {
+    const name = nameInput?.value.trim() || "";
+    const phoneNumber = phoneInput?.value.trim() || "";
+
+    if (!name || !phoneNumber) {
+        showMessageAlert(
+            "Missing Information",
+            "Please enter both the contact name and phone number."
+        );
         return;
     }
 
-    const name = nameInput.value.trim();
-    const phoneNumber = phoneInput.value.trim();
+    const contactId = state.editingContactId;
 
-    if (!name) {
+    if (contactId === null || contactId === undefined) {
         showMessageAlert(
-            "Invalid Contact",
-            "Please enter a contact name."
+            "Invalid Action",
+            "New contacts can only be registered through the Security Alert app."
         );
-        nameInput.focus();
-        return;
-    }
-
-    if (!phoneNumber) {
-        showMessageAlert(
-            "Invalid Contact",
-            "Please enter a phone number."
-        );
-        phoneInput.focus();
         return;
     }
 
@@ -696,29 +695,20 @@ async function handleContactSubmit(event) {
 
     if (submitButton) {
         submitButton.disabled = true;
-        submitButton.textContent =
-            state.editingContactId !== null
-                ? "Saving..."
-                : "Adding...";
+        submitButton.textContent = "Saving...";
     }
 
     const payload = {
         name,
-        phone_number: phoneNumber,
-        notification_token: null
+        phone_number: phoneNumber
     };
 
     try {
-        const url = state.editingContactId !== null
-            ? `${API_BASE}/contacts/${encodeURIComponent(state.editingContactId)}`
-            : `${API_BASE}/contacts`;
-
-        const method = state.editingContactId !== null
-            ? "PUT"
-            : "POST";
+        const url =
+            `${API_BASE}/contacts/${encodeURIComponent(contactId)}`;
 
         const response = await fetch(url, {
-            method,
+            method: "PUT",
             headers: {
                 "Content-Type": "application/json",
                 "Accept": "application/json"
@@ -726,36 +716,34 @@ async function handleContactSubmit(event) {
             body: JSON.stringify(payload)
         });
 
+        const result = await response.json().catch(() => null);
+
         if (!response.ok) {
-            let message = `Request failed with status ${response.status}.`;
-
-            try {
-                const data = await response.json();
-
-                if (data.error) {
-                    message = data.error;
-                }
-            } catch (_) {}
-
-            throw new Error(message);
+            throw new Error(
+                result?.error ||
+                `Contact API returned ${response.status}`
+            );
         }
 
         closeContactModal();
+
         await loadContacts();
-    } catch (error) {
-        console.error("Failed to save contact:", error);
 
         showMessageAlert(
-            "Save Failed",
-            error.message || "Failed to save contact."
+            "Contact Updated",
+            "The contact information has been updated successfully."
+        );
+    } catch (error) {
+        console.error("Failed to update contact:", error);
+
+        showMessageAlert(
+            "Update Failed",
+            error.message || "Failed to update the contact."
         );
 
         if (submitButton) {
             submitButton.disabled = false;
-            submitButton.textContent =
-                state.editingContactId !== null
-                    ? "Save Changes"
-                    : "Add Contact";
+            submitButton.textContent = "Save Changes";
         }
     }
 }
