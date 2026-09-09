@@ -41,7 +41,7 @@ def initialize_firebase():
         print(f"[ALERT] Firebase service account JSON is invalid: {error}")
 
     except ImportError:
-        print("[ALERT] firebase-admin is not installed.")
+        print("[ALERT] firebase-admin could not be installed.")
 
     except Exception as error:
         print(f"[ALERT] Firebase initialization failed: {error}")
