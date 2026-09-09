@@ -8,12 +8,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-
 MAX_CAMERAS = 4
 MIN_RED_AREA = 2500
 MIN_RED_PERCENTAGE = 1.0
 JPEG_QUALITY = 80
-ALERT_COOLDOWN_SECONDS = 5
+
+ALERT_COOLDOWN_SECONDS = 60
+DETECTION_CONFIRMATION_SECONDS = 1
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_FILE = BASE_DIR / "security.db"
@@ -24,7 +25,6 @@ database_lock = threading.RLock()
 
 camera_states = {}
 alert_callback: Optional[Callable] = None
-
 
 def initialize_camera_states():
     with camera_lock:
@@ -37,7 +37,8 @@ def initialize_camera_states():
                 "latest_frame": None,
                 "detected": False,
                 "alert_active": False,
-                "last_detection_time": 0,
+                "detection_started_time": None,
+                "last_alert_time": 0,
                 "red_area": 0,
                 "red_percentage": 0.0
             }
@@ -47,7 +48,6 @@ def get_db_connection():
     connection = sqlite3.connect(str(DATABASE_FILE), timeout=10)
     connection.row_factory = sqlite3.Row
     return connection
-
 
 def initialize_database():
     with database_lock:
@@ -64,7 +64,16 @@ def initialize_database():
                     updated_at TEXT NOT NULL
                 )
             """)
+
+            connection.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS
+                idx_contacts_notification_token
+                ON contacts(notification_token)
+                WHERE notification_token IS NOT NULL
+            """)
+
             connection.commit()
+
         finally:
             connection.close()
 
@@ -75,13 +84,18 @@ def get_all_contacts():
 
         try:
             rows = connection.execute("""
-                SELECT id, name, phone_number, notification_token,
-                       created_at, updated_at
+                SELECT id,
+                       name,
+                       phone_number,
+                       notification_token,
+                       created_at,
+                       updated_at
                 FROM contacts
                 ORDER BY id ASC
             """).fetchall()
 
             return [dict(row) for row in rows]
+
         finally:
             connection.close()
 
@@ -92,55 +106,95 @@ def get_contact(contact_id):
 
         try:
             row = connection.execute("""
-                SELECT id, name, phone_number, notification_token,
-                       created_at, updated_at
+                SELECT id,
+                       name,
+                       phone_number,
+                       notification_token,
+                       created_at,
+                       updated_at
                 FROM contacts
                 WHERE id = ?
             """, (contact_id,)).fetchone()
 
             return dict(row) if row else None
+
         finally:
             connection.close()
 
 
-def create_contact(name, phone_number, notification_token=None):
+def register_contact(name, phone_number, notification_token):
+    name = str(name).strip()
+    phone_number = str(phone_number).strip()
+    notification_token = str(notification_token).strip()
+
+    if not name:
+        raise ValueError("Name is required.")
+
+    if not phone_number:
+        raise ValueError("Phone number is required.")
+
+    if not notification_token:
+        raise ValueError("Firebase notification token is required.")
+
     now = datetime.now().isoformat(timespec="seconds")
 
     with database_lock:
         connection = get_db_connection()
 
         try:
-            cursor = connection.execute("""
-                INSERT INTO contacts (
+            existing = connection.execute("""
+                SELECT id
+                FROM contacts
+                WHERE notification_token = ?
+            """, (notification_token,)).fetchone()
+
+            if existing:
+                connection.execute("""
+                    UPDATE contacts
+                    SET name = ?,
+                        phone_number = ?,
+                        notification_token = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                """, (
                     name,
                     phone_number,
                     notification_token,
-                    created_at,
-                    updated_at
-                )
-                VALUES (?, ?, ?, ?, ?)
-            """, (
-                name,
-                phone_number,
-                notification_token,
-                now,
-                now
-            ))
+                    now,
+                    existing["id"]
+                ))
 
-            connection.commit()
-            contact_id = cursor.lastrowid
+                connection.commit()
+                contact_id = existing["id"]
+
+            else:
+                cursor = connection.execute("""
+                    INSERT INTO contacts (
+                        name,
+                        phone_number,
+                        notification_token,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    name,
+                    phone_number,
+                    notification_token,
+                    now,
+                    now
+                ))
+
+                connection.commit()
+                contact_id = cursor.lastrowid
+
         finally:
             connection.close()
 
     return get_contact(contact_id)
 
 
-def update_contact(
-    contact_id,
-    name,
-    phone_number,
-    notification_token=None
-):
+def update_contact(contact_id, name, phone_number):
     now = datetime.now().isoformat(timespec="seconds")
 
     with database_lock:
@@ -151,13 +205,11 @@ def update_contact(
                 UPDATE contacts
                 SET name = ?,
                     phone_number = ?,
-                    notification_token = ?,
                     updated_at = ?
                 WHERE id = ?
             """, (
                 name,
                 phone_number,
-                notification_token,
                 now,
                 contact_id
             ))
@@ -166,6 +218,7 @@ def update_contact(
 
             if cursor.rowcount == 0:
                 return None
+
         finally:
             connection.close()
 
@@ -183,23 +236,11 @@ def delete_contact(contact_id):
             """, (contact_id,))
 
             connection.commit()
+
             return cursor.rowcount > 0
+
         finally:
             connection.close()
-
-
-def update_contact_token(contact_id, notification_token):
-    contact = get_contact(contact_id)
-
-    if contact is None:
-        return None
-
-    return update_contact(
-        contact_id,
-        contact["name"],
-        contact["phone_number"],
-        notification_token
-    )
 
 
 def get_notification_tokens():
@@ -346,7 +387,7 @@ def mark_camera_connected(camera_id):
         camera_states[camera_id]["connected"] = True
         camera_states[camera_id]["last_seen"] = time.time()
         camera_states[camera_id]["alert_active"] = False
-
+        camera_states[camera_id]["detection_started_time"] = None
 
 def mark_camera_disconnected(camera_id):
     with camera_lock:
@@ -354,6 +395,7 @@ def mark_camera_disconnected(camera_id):
         camera_states[camera_id]["last_seen"] = time.time()
         camera_states[camera_id]["detected"] = False
         camera_states[camera_id]["alert_active"] = False
+        camera_states[camera_id]["detection_started_time"] = None
 
 
 def get_available_camera_id():
@@ -428,9 +470,6 @@ def process_camera_frame(camera_id, frame):
     with camera_lock:
         camera = camera_states[camera_id]
 
-        previous_alert_active = camera["alert_active"]
-        last_detection_time = camera["last_detection_time"]
-
         camera["latest_frame"] = jpeg_bytes
         camera["last_seen"] = now
         camera["detected"] = detected
@@ -438,31 +477,36 @@ def process_camera_frame(camera_id, frame):
         camera["red_percentage"] = red_percentage
 
         if detected:
+
+            if camera["detection_started_time"] is None:
+                camera["detection_started_time"] = now
+
+            detection_duration = (now - camera["detection_started_time"])
+
             if (
-                not previous_alert_active
-                and now - last_detection_time >= ALERT_COOLDOWN_SECONDS
+                not camera["alert_active"]
+                and detection_duration >= DETECTION_CONFIRMATION_SECONDS
+                and now - camera["last_alert_time"] >= ALERT_COOLDOWN_SECONDS
             ):
+
                 camera["alert_active"] = True
-                camera["last_detection_time"] = now
+                camera["last_alert_time"] = now
                 should_alert = True
+
         else:
+            camera["detection_started_time"] = None
             camera["alert_active"] = False
 
     if should_alert:
-        print(f"[ALERT] Red object detected on Camera {camera_id}.")
+        print(f"[ALERT] Red object confirmed on Camera {camera_id}.")
 
         if alert_callback:
             try:
-                alert_callback(
-                    camera_id,
-                    red_area,
-                    red_percentage
-                )
+                alert_callback(camera_id, red_area, red_percentage)
             except Exception as error:
                 print(f"[ALERT] Notification error: {error}")
 
     return jpeg_bytes
-
 
 def decode_frame(data):
     image_array = np.frombuffer(
