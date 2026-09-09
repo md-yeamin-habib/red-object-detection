@@ -1,5 +1,6 @@
 import os
 import time
+import json
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_sock import Sock
@@ -13,30 +14,31 @@ MAX_CAMERAS = backend.MAX_CAMERAS
 
 firebase_initialized = False
 
-
 def initialize_firebase():
     global firebase_initialized
 
-    service_account_path = os.getenv("FIREBASE_SERVICE_ACCOUNT")
+    service_account_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")
 
-    if not service_account_path:
+    if not service_account_json:
         print("[ALERT] Firebase service account not configured.")
-        return
-
-    if not os.path.exists(service_account_path):
-        print(f"[ALERT] Firebase service account not found: {service_account_path}")
         return
 
     try:
         import firebase_admin
         from firebase_admin import credentials
 
+        service_account_info = json.loads(service_account_json)
+
         if not firebase_admin._apps:
-            credential = credentials.Certificate(service_account_path)
+            credential = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(credential)
 
         firebase_initialized = True
+
         print("[ALERT] Firebase Admin SDK initialized.")
+
+    except json.JSONDecodeError as error:
+        print(f"[ALERT] Firebase service account JSON is invalid: {error}")
 
     except ImportError:
         print("[ALERT] firebase-admin is not installed.")
