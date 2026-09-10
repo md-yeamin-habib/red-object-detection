@@ -1,12 +1,16 @@
-import sqlite3
+
+import os
 import threading
 import time
 from datetime import datetime
 from typing import Callable, Optional
-from pathlib import Path
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 import cv2
 import numpy as np
+
 
 MAX_CAMERAS = 4
 MIN_RED_AREA = 2500
@@ -16,15 +20,14 @@ JPEG_QUALITY = 80
 ALERT_COOLDOWN_SECONDS = 60
 DETECTION_CONFIRMATION_SECONDS = 1
 
-BASE_DIR = Path(__file__).resolve().parent
-DATABASE_FILE = BASE_DIR / "security.db"
-
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 camera_lock = threading.Lock()
 database_lock = threading.RLock()
 
 camera_states = {}
 alert_callback: Optional[Callable] = None
+
 
 def initialize_camera_states():
     with camera_lock:
@@ -45,32 +48,39 @@ def initialize_camera_states():
 
 
 def get_db_connection():
-    connection = sqlite3.connect(str(DATABASE_FILE), timeout=10)
-    connection.row_factory = sqlite3.Row
-    return connection
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL environment variable is not configured.")
+
+    return psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=RealDictCursor
+    )
+
 
 def initialize_database():
     with database_lock:
         connection = get_db_connection()
 
         try:
-            connection.execute("""
-                CREATE TABLE IF NOT EXISTS contacts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    phone_number TEXT NOT NULL,
-                    notification_token TEXT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-            """)
+            with connection.cursor() as cursor:
 
-            connection.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS
-                idx_contacts_notification_token
-                ON contacts(notification_token)
-                WHERE notification_token IS NOT NULL
-            """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS contacts (
+                        id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        phone_number TEXT NOT NULL,
+                        notification_token TEXT NULL,
+                        created_at TIMESTAMP NOT NULL,
+                        updated_at TIMESTAMP NOT NULL
+                    )
+                """)
+
+                cursor.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS
+                    idx_contacts_notification_token
+                    ON contacts(notification_token)
+                    WHERE notification_token IS NOT NULL
+                """)
 
             connection.commit()
 
@@ -83,18 +93,22 @@ def get_all_contacts():
         connection = get_db_connection()
 
         try:
-            rows = connection.execute("""
-                SELECT id,
-                       name,
-                       phone_number,
-                       notification_token,
-                       created_at,
-                       updated_at
-                FROM contacts
-                ORDER BY id ASC
-            """).fetchall()
+            with connection.cursor() as cursor:
 
-            return [dict(row) for row in rows]
+                cursor.execute("""
+                    SELECT id,
+                           name,
+                           phone_number,
+                           notification_token,
+                           created_at,
+                           updated_at
+                    FROM contacts
+                    ORDER BY id ASC
+                """)
+
+                rows = cursor.fetchall()
+
+                return [dict(row) for row in rows]
 
         finally:
             connection.close()
@@ -105,18 +119,22 @@ def get_contact(contact_id):
         connection = get_db_connection()
 
         try:
-            row = connection.execute("""
-                SELECT id,
-                       name,
-                       phone_number,
-                       notification_token,
-                       created_at,
-                       updated_at
-                FROM contacts
-                WHERE id = ?
-            """, (contact_id,)).fetchone()
+            with connection.cursor() as cursor:
 
-            return dict(row) if row else None
+                cursor.execute("""
+                    SELECT id,
+                           name,
+                           phone_number,
+                           notification_token,
+                           created_at,
+                           updated_at
+                    FROM contacts
+                    WHERE id = %s
+                """, (contact_id,))
+
+                row = cursor.fetchone()
+
+                return dict(row) if row else None
 
         finally:
             connection.close()
@@ -136,57 +154,62 @@ def register_contact(name, phone_number, notification_token):
     if not notification_token:
         raise ValueError("Firebase notification token is required.")
 
-    now = datetime.now().isoformat(timespec="seconds")
+    now = datetime.now()
 
     with database_lock:
         connection = get_db_connection()
 
         try:
-            existing = connection.execute("""
-                SELECT id
-                FROM contacts
-                WHERE notification_token = ?
-            """, (notification_token,)).fetchone()
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id
+                    FROM contacts
+                    WHERE notification_token = %s
+                """, (notification_token,))
 
-            if existing:
-                connection.execute("""
-                    UPDATE contacts
-                    SET name = ?,
-                        phone_number = ?,
-                        notification_token = ?,
-                        updated_at = ?
-                    WHERE id = ?
-                """, (
-                    name,
-                    phone_number,
-                    notification_token,
-                    now,
-                    existing["id"]
-                ))
+                existing = cursor.fetchone()
 
-                connection.commit()
-                contact_id = existing["id"]
-
-            else:
-                cursor = connection.execute("""
-                    INSERT INTO contacts (
+                if existing:
+                    cursor.execute("""
+                        UPDATE contacts
+                        SET name = %s,
+                            phone_number = %s,
+                            notification_token = %s,
+                            updated_at = %s
+                        WHERE id = %s
+                    """, (
                         name,
                         phone_number,
                         notification_token,
-                        created_at,
-                        updated_at
-                    )
-                    VALUES (?, ?, ?, ?, ?)
-                """, (
-                    name,
-                    phone_number,
-                    notification_token,
-                    now,
-                    now
-                ))
+                        now,
+                        existing["id"]
+                    ))
 
-                connection.commit()
-                contact_id = cursor.lastrowid
+                    contact_id = existing["id"]
+
+                else:
+                    cursor.execute("""
+                        INSERT INTO contacts (
+                            name,
+                            phone_number,
+                            notification_token,
+                            created_at,
+                            updated_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (
+                        name,
+                        phone_number,
+                        notification_token,
+                        now,
+                        now
+                    ))
+
+                    result = cursor.fetchone()
+                    contact_id = result["id"]
+
+            connection.commit()
 
         finally:
             connection.close()
@@ -195,29 +218,41 @@ def register_contact(name, phone_number, notification_token):
 
 
 def update_contact(contact_id, name, phone_number):
-    now = datetime.now().isoformat(timespec="seconds")
+    name = str(name).strip()
+    phone_number = str(phone_number).strip()
+
+    if not name:
+        raise ValueError("Name is required.")
+
+    if not phone_number:
+        raise ValueError("Phone number is required.")
+
+    now = datetime.now()
 
     with database_lock:
         connection = get_db_connection()
 
         try:
-            cursor = connection.execute("""
-                UPDATE contacts
-                SET name = ?,
-                    phone_number = ?,
-                    updated_at = ?
-                WHERE id = ?
-            """, (
-                name,
-                phone_number,
-                now,
-                contact_id
-            ))
+            with connection.cursor() as cursor:
+
+                cursor.execute("""
+                    UPDATE contacts
+                    SET name = %s,
+                        phone_number = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                """, (
+                    name,
+                    phone_number,
+                    now,
+                    contact_id
+                ))
+
+                if cursor.rowcount == 0:
+                    connection.rollback()
+                    return None
 
             connection.commit()
-
-            if cursor.rowcount == 0:
-                return None
 
         finally:
             connection.close()
@@ -230,14 +265,18 @@ def delete_contact(contact_id):
         connection = get_db_connection()
 
         try:
-            cursor = connection.execute("""
-                DELETE FROM contacts
-                WHERE id = ?
-            """, (contact_id,))
+            with connection.cursor() as cursor:
+
+                cursor.execute("""
+                    DELETE FROM contacts
+                    WHERE id = %s
+                """, (contact_id,))
+
+                deleted = cursor.rowcount > 0
 
             connection.commit()
 
-            return cursor.rowcount > 0
+            return deleted
 
         finally:
             connection.close()
@@ -258,7 +297,7 @@ def get_notification_tokens():
                 tokens.append(token)
 
     return tokens
-
+    
 
 def set_alert_callback(callback: Callable):
     global alert_callback
