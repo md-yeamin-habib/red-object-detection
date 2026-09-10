@@ -6,3 +6,4 @@ gunicorn
 gevent
 packaging
 firebase-admin
+psycopg2-binary
