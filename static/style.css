@@ -579,6 +579,71 @@ body {
     color: var(--danger);
 }
 
+/* =========================================================
+   FULLSCREEN BUTTON
+   ========================================================= */
+
+.fullscreen-btn {
+    position: absolute;
+
+    right: 16px;
+    bottom: 16px;
+
+    width: 36px;
+    height: 36px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: #070a0e;
+    color: var(--text-secondary);
+    cursor: pointer;
+    z-index: 20;
+
+    transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        transform 0.15s ease;
+}
+
+.fullscreen-btn .material-icons {
+    font-size: 20px;
+    font-weight: 400;
+}
+
+.fullscreen-btn:hover {
+    background: #0b0f14;
+    color: var(--text);
+}
+
+.fullscreen-btn:active {
+    transform: scale(0.94);
+}
+
+.fullscreen-btn:focus-visible {
+    outline: 1px solid var(--text-muted);
+    outline-offset: 2px;
+}
+
+.camera-frame:fullscreen {
+    width: 100vw;
+    height: 100vh;
+
+    background: #070a0e;
+
+    border: none;
+    border-radius: 0;
+}
+
+.camera-frame:fullscreen .camera-placeholder {
+    width: 100%;
+    height: 100%;
+}
+
 
 /* =========================================================
    CONTACTS VIEW
