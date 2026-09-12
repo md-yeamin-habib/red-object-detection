@@ -431,6 +431,7 @@ def mark_camera_disconnected(camera_id):
     with camera_lock:
         camera_states[camera_id]["connected"] = False
         camera_states[camera_id]["last_seen"] = time.time()
+        camera_states[camera_id]["latest_frame"] = None
         camera_states[camera_id]["detected"] = False
         camera_states[camera_id]["alert_active"] = False
         camera_states[camera_id]["detection_started_time"] = None
