@@ -35,6 +35,8 @@ const connectionStatusText = document.getElementById("connectionStatusText");
 const currentTime = document.getElementById("currentTime");
 const contactsTableBody = document.getElementById("contactsTableBody");
 const contactsEmpty = document.getElementById("contactsEmpty");
+const fsBtn = document.getElementById("fullscreenBtn");
+const exitBtn = document.getElementById("exitFullscreenBtn");
 
 document.addEventListener("DOMContentLoaded", initialize);
 
@@ -326,6 +328,63 @@ function removeCameraStream() {
         stream.remove();
     }
 }
+
+fsBtn.addEventListener("click", async () => {
+    try {
+        await cameraFrame.requestFullscreen();
+    } catch (error) {
+        console.error("Could not enter fullscreen:", error);
+    }
+
+});
+
+exitBtn.addEventListener("click", async () => {
+    try {
+        await document.exitFullscreen();
+    } catch (error) {
+        console.error("Could not exit fullscreen:", error);
+    }
+
+});
+
+document.addEventListener("fullscreenchange", () => {
+
+    const isFullscreen =
+        document.fullscreenElement === cameraFrame;
+
+    if (isFullscreen) {
+
+        fsBtn.style.display = "none";
+        exitBtn.style.display = "flex";
+
+        exitBtn.setAttribute(
+            "aria-label",
+            "Exit fullscreen"
+        );
+
+        exitBtn.setAttribute(
+            "title",
+            "Exit fullscreen"
+        );
+
+    } else {
+
+        fsBtn.style.display = "flex";
+        exitBtn.style.display = "none";
+
+        fsBtn.setAttribute(
+            "aria-label",
+            "Enter fullscreen"
+        );
+
+        fsBtn.setAttribute(
+            "title",
+            "Fullscreen"
+        );
+
+    }
+
+});
 
 function checkDetectionAlerts() {
     state.cameras.forEach(camera => {
