@@ -158,12 +158,24 @@ function renderCameras() {
 
 function selectCamera(cameraId) {
     if (String(state.selectedCameraId) === String(cameraId)) {
+        if (state.currentView !== "cameras") {
+            showCameraView();
+        }
         return;
     }
 
     state.selectedCameraId = cameraId;
+
     renderCameras();
-    updateCameraDisplay(true);
+
+    if (state.currentView !== "cameras") {
+        showCameraView();
+    } else {
+        updateCameraDisplay();
+    }
+
+    cameraList.classList.remove("collapsed");
+    camerasTab.setAttribute("aria-expanded", "true");
 }
 
 function getSelectedCamera() {
@@ -196,11 +208,12 @@ function showCameraConnected(camera, forceStreamUpdate = false) {
     let stream = document.getElementById("cameraStream");
     const streamCameraId = stream?.dataset.cameraId;
 
-    if (
+    const needsNewStream =
         !stream ||
         forceStreamUpdate ||
-        String(streamCameraId) !== String(camera.id)
-    ) {
+        String(streamCameraId) !== String(camera.id);
+
+    if (needsNewStream) {
         removeCameraStream();
 
         stream = document.createElement("img");
@@ -208,7 +221,8 @@ function showCameraConnected(camera, forceStreamUpdate = false) {
         stream.id = "cameraStream";
         stream.dataset.cameraId = String(camera.id);
         stream.alt = `${camera.name || `Camera ${camera.id}`} live feed`;
-        stream.src = `${API_BASE}/cameras/${encodeURIComponent(camera.id)}/stream`;
+        stream.src =
+            `${API_BASE}/cameras/${encodeURIComponent(camera.id)}/stream`;
 
         stream.addEventListener("error", () => {
             if (String(state.selectedCameraId) !== String(camera.id)) {
@@ -320,6 +334,14 @@ function checkDetectionAlerts() {
         if (camera.detected) {
             if (!state.alertedCameras.has(cameraId)) {
                 state.alertedCameras.add(cameraId);
+
+                if (
+                    state.currentView === "cameras" &&
+                    String(state.selectedCameraId) === cameraId
+                ) {
+                    return;
+                }
+
                 showDetectionAlert(camera);
             }
         } else {
@@ -362,21 +384,53 @@ function showDetectionAlert(camera) {
     ignoreButton.type = "button";
     ignoreButton.className = "detection-alert-button ignore";
     ignoreButton.textContent = "Ignore";
-    ignoreButton.addEventListener("click", closeDetectionAlert);
 
     const switchButton = document.createElement("button");
     switchButton.type = "button";
     switchButton.className = "detection-alert-button switch";
     switchButton.textContent = `Switch to ${cameraName}`;
 
-    switchButton.addEventListener("click", () => {
+    switchButton.style.background =
+        "linear-gradient(to right, var(--switch-button-color, #16a34a) 0%, var(--switch-button-color, #16a34a) 100%)";
+
+    let completed = false;
+    const countdownDuration = 5000;
+    const startTime = performance.now();
+
+    const switchToCamera = () => {
+        if (completed) {
+            return;
+        }
+
+        completed = true;
+
+        if (countdownAnimation) {
+            cancelAnimationFrame(countdownAnimation);
+        }
+
         state.selectedCameraId = camera.id;
 
         renderCameras();
-        updateCameraDisplay(true);
 
         if (state.currentView !== "cameras") {
             showCameraView();
+        } else {
+            updateCameraDisplay(true);
+        }
+
+        cameraList.classList.remove("collapsed");
+        camerasTab.setAttribute("aria-expanded", "true");
+
+        closeDetectionAlert();
+    };
+
+    switchButton.addEventListener("click", switchToCamera);
+
+    ignoreButton.addEventListener("click", () => {
+        completed = true;
+
+        if (countdownAnimation) {
+            cancelAnimationFrame(countdownAnimation);
         }
 
         closeDetectionAlert();
@@ -390,8 +444,42 @@ function showDetectionAlert(camera) {
     trapModalFocus(
         overlay,
         [ignoreButton, switchButton],
-        ignoreButton
+        switchButton
     );
+
+    let countdownAnimation;
+
+    const updateCountdown = currentTime => {
+        if (completed || !document.body.contains(overlay)) {
+            return;
+        }
+
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(
+            elapsed / countdownDuration,
+            1
+        );
+
+        const grayProgress = progress * 100;
+
+        switchButton.style.background =
+            `linear-gradient(
+                to right,
+                #9ca3af 0%,
+                #9ca3af ${grayProgress}%,
+                var(--switch-button-color, #16a34a) ${grayProgress}%,
+                var(--switch-button-color, #16a34a) 100%
+            )`;
+
+        if (progress >= 1) {
+            switchToCamera();
+            return;
+        }
+
+        countdownAnimation = requestAnimationFrame(updateCountdown);
+    };
+
+    countdownAnimation = requestAnimationFrame(updateCountdown);
 }
 
 function closeDetectionAlert() {
@@ -414,7 +502,7 @@ function showCameraView() {
     pageEyebrow.textContent = "LIVE MONITORING";
     pageTitle.textContent = "Camera Monitoring";
 
-    updateCameraDisplay(true);
+    updateCameraDisplay();
 }
 
 async function showContactsView() {
