@@ -18,6 +18,7 @@ JPEG_QUALITY = 80
 
 ALERT_COOLDOWN_SECONDS = 60
 DETECTION_CONFIRMATION_SECONDS = 1
+CAMERA_TIMEOUT_SECONDS = 5
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -427,14 +428,47 @@ def mark_camera_connected(camera_id):
         camera_states[camera_id]["alert_active"] = False
         camera_states[camera_id]["detection_started_time"] = None
 
+
 def mark_camera_disconnected(camera_id):
     with camera_lock:
-        camera_states[camera_id]["connected"] = False
-        camera_states[camera_id]["last_seen"] = time.time()
-        camera_states[camera_id]["latest_frame"] = None
-        camera_states[camera_id]["detected"] = False
-        camera_states[camera_id]["alert_active"] = False
-        camera_states[camera_id]["detection_started_time"] = None
+        camera = camera_states.get(camera_id)
+
+        if camera is None:
+            return
+
+        camera["connected"] = False
+        camera["last_seen"] = time.time()
+        camera["latest_frame"] = None
+        camera["detected"] = False
+        camera["alert_active"] = False
+        camera["detection_started_time"] = None
+
+def cleanup_stale_cameras():
+    now = time.time()
+
+    stale_camera_ids = []
+
+    with camera_lock:
+        for camera_id, camera in camera_states.items():
+
+            if not camera["connected"]:
+                continue
+
+            last_seen = camera["last_seen"]
+
+            if last_seen is None:
+                continue
+
+            if now - last_seen > CAMERA_TIMEOUT_SECONDS:
+                stale_camera_ids.append(camera_id)
+
+    for camera_id in stale_camera_ids:
+        print(
+            f"[CAMERA] Camera {camera_id} timed out. "
+            f"Marking as disconnected."
+        )
+
+        mark_camera_disconnected(camera_id)
 
 
 def get_available_camera_id():
@@ -479,12 +513,14 @@ def get_all_camera_states():
             for camera in camera_states.values()
         ]
 
-
 def get_latest_frame(camera_id):
     with camera_lock:
         camera = camera_states.get(camera_id)
 
         if camera is None:
+            return None
+
+        if not camera["connected"]:
             return None
 
         return camera["latest_frame"]
@@ -558,6 +594,21 @@ def decode_frame(data):
         cv2.IMREAD_COLOR
     )
 
+def camera_monitor_loop():
+    while True:
+        try:
+            cleanup_stale_cameras()
+        except Exception as error:
+            print(f"[CAMERA] Monitor error: {error}")
+
+        time.sleep(1)
 
 initialize_camera_states()
 initialize_database()
+
+camera_monitor_thread = threading.Thread(
+    target=camera_monitor_loop,
+    daemon=True
+)
+
+camera_monitor_thread.start()
