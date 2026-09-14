@@ -49,7 +49,7 @@ async function initialize() {
     await loadCameras();
     await loadContacts();
 
-    state.camerasRefreshTimer = setInterval(loadCameras, 8000);
+    state.camerasRefreshTimer = setInterval(loadCameras, 1000);
     state.serverStatusTimer = setInterval(checkServerStatus, 8000);
 }
 
@@ -218,40 +218,74 @@ function showCameraConnected(camera, forceStreamUpdate = false) {
     if (needsNewStream) {
         removeCameraStream();
 
+        cameraPlaceholder.classList.remove("hidden");
+        cameraLiveOverlay.classList.add("hidden");
+
+        cameraPlaceholderTitle.textContent = "Connecting to camera...";
+        cameraPlaceholderMessage.textContent =
+            "Waiting for the live video stream.";
+
+        cameraInfoStatus.textContent = "Connecting";
+        cameraInfoStatus.className = "info-value status-offline";
+
         stream = document.createElement("img");
+
         stream.className = "camera-stream";
         stream.id = "cameraStream";
         stream.dataset.cameraId = String(camera.id);
-        stream.alt = `${camera.name || `Camera ${camera.id}`} live feed`;
-        stream.src =
-            `${API_BASE}/cameras/${encodeURIComponent(camera.id)}/stream`;
+        stream.alt =
+            `${camera.name || `Camera ${camera.id}`} live feed`;
 
-        stream.addEventListener("error", () => {
-            if (String(state.selectedCameraId) !== String(camera.id)) {
+        stream.src =
+            `${API_BASE}/cameras/${encodeURIComponent(camera.id)}/stream?stream=${Date.now()}`;
+
+        stream.addEventListener("load", () => {
+            if (
+                String(state.selectedCameraId) !==
+                String(camera.id)
+            ) {
                 return;
             }
 
-            stream.remove();
+            cameraPlaceholder.classList.add("hidden");
+            cameraLiveOverlay.classList.remove("hidden");
+
+            cameraInfoStatus.textContent = "Connected";
+            cameraInfoStatus.className =
+                "info-value status-online";
+        });
+
+        stream.addEventListener("error", () => {
+            if (
+                String(state.selectedCameraId) !==
+                String(camera.id)
+            ) {
+                return;
+            }
+
+            removeCameraStream();
 
             cameraLiveOverlay.classList.add("hidden");
             cameraPlaceholder.classList.remove("hidden");
 
-            cameraPlaceholderTitle.textContent = "Camera stream unavailable";
+            cameraPlaceholderTitle.textContent =
+                "Camera stream unavailable";
+
             cameraPlaceholderMessage.textContent =
                 "The camera is connected, but no video signal is currently available.";
 
-            cameraInfoStatus.textContent = "Stream unavailable";
-            cameraInfoStatus.className = "info-value status-offline";
+            cameraInfoStatus.textContent =
+                "Stream unavailable";
+
+            cameraInfoStatus.className =
+                "info-value status-offline";
         });
 
         cameraFrame.appendChild(stream);
     }
 
-    cameraPlaceholder.classList.add("hidden");
-    cameraLiveOverlay.classList.remove("hidden");
-
-    cameraInfoStatus.textContent = "Connected";
-    cameraInfoStatus.className = "info-value status-online";
+    cameraInfoName.textContent =
+        camera.name || `Camera ${camera.id}`;
 
     cameraInfoDetection.textContent = camera.detected
         ? "Red object detected"
@@ -260,6 +294,15 @@ function showCameraConnected(camera, forceStreamUpdate = false) {
     cameraInfoDetection.className = camera.detected
         ? "info-value status-offline"
         : "info-value status-online";
+
+    if (document.getElementById("cameraStream")) {
+        cameraPlaceholder.classList.add("hidden");
+        cameraLiveOverlay.classList.remove("hidden");
+
+        cameraInfoStatus.textContent = "Connected";
+        cameraInfoStatus.className =
+            "info-value status-online";
+    }
 }
 
 function showCameraDisconnected(camera) {
@@ -323,10 +366,13 @@ function showNoCameraData() {
 function removeCameraStream() {
     const stream = document.getElementById("cameraStream");
 
-    if (stream) {
-        stream.src = "";
-        stream.remove();
+    if (!stream) {
+        return;
     }
+
+    stream.src = "about:blank";
+    stream.removeAttribute("src");
+    stream.remove();
 }
 
 fsBtn.addEventListener("click", async () => {
