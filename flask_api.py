@@ -12,6 +12,7 @@ app = Flask(__name__, static_folder="static")
 sock = Sock(app)
 
 MAX_CAMERAS = backend.MAX_CAMERAS
+CAMERA_RECEIVE_TIMEOUT = backend.CAMERA_TIMEOUT_SECONDS
 
 firebase_initialized = False
 
@@ -95,7 +96,6 @@ def send_security_alert(camera_id, red_area, red_percentage):
         print(f"[ALERT] Firebase notification failed: {error}")
         traceback.print_exc()
 
-
 def camera_mjpeg_stream(camera_id):
     while True:
         camera = backend.get_camera_state(camera_id)
@@ -103,21 +103,23 @@ def camera_mjpeg_stream(camera_id):
         if camera is None:
             break
 
-        frame = backend.get_latest_frame(camera_id)
-
-        if frame is not None:
-            yield (
-                b"--frame\r\n"
-                b"Content-Type: image/jpeg\r\n\r\n"
-                + frame
-                + b"\r\n"
-            )
-
-        if not camera["connected"] and frame is None:
+        if not camera["connected"]:
             break
 
-        time.sleep(0.03)
+        frame = backend.get_latest_frame(camera_id)
 
+        if frame is None:
+            time.sleep(0.03)
+            continue
+
+        yield (
+            b"--frame\r\n"
+            b"Content-Type: image/jpeg\r\n\r\n"
+            + frame
+            + b"\r\n"
+        )
+
+        time.sleep(0.03)
 
 def handle_camera_socket(ws, camera_id):
     backend.mark_camera_connected(camera_id)
@@ -125,8 +127,13 @@ def handle_camera_socket(ws, camera_id):
     print(f"[CAMERA] Camera {camera_id} connected.")
 
     try:
+        ws.send(f"CAMERA_ID:{camera_id}")
+
         while True:
-            data = ws.receive()
+            try:
+                data = ws.receive(timeout=CAMERA_RECEIVE_TIMEOUT)
+            except TypeError:
+                data = ws.receive()
 
             if data is None:
                 break
@@ -140,16 +147,14 @@ def handle_camera_socket(ws, camera_id):
                 print(f"[CAMERA] Invalid frame from Camera {camera_id}.")
                 continue
 
-            backend.process_camera_frame(
-                camera_id,
-                frame
-            )
+            backend.process_camera_frame(camera_id, frame)
 
     except Exception as error:
         print(f"[CAMERA] Camera {camera_id} error: {error}")
 
     finally:
         backend.mark_camera_disconnected(camera_id)
+
         print(f"[CAMERA] Camera {camera_id} disconnected.")
 
 
